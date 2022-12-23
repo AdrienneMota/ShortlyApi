@@ -223,7 +223,7 @@ app.get("/users/me", async(req, res) => {
 
         const rawUser = await connectingDB.query('SELECT id, name FROM users WHERE id=$1', [session.rows[0].userId])
         if(rawUser.rows.length === 0){
-            return res.status(401).send({message: "Este usuário não existe."})
+            return res.status(404).send({message: "Este usuário não existe."})
         }
         const rawUrls = await connectingDB.query('SELECT id, "shortUrl", url, "visitCount" FROM urls WHERE "userId"=$1', [session.rows[0].userId])
         const shortenedUrls = rawUrls.rows || []
@@ -238,6 +238,27 @@ app.get("/users/me", async(req, res) => {
     } catch (error) {
         console.log(error)
         res.sendStatus(500)   
+    }
+})
+
+app.get("/ranking", async(req, res) => {
+    try {
+        const ranking = await connectingDB.query(`
+            SELECT 
+                users.id, name, COUNT(urls.id) as "linksCount", 
+            SUM(COALESCE(urls."visitCount", 0)) as "visitCount" 
+            FROM 
+                users users 
+            LEFT JOIN urls urls ON urls."userId" = users.id 
+            GROUP BY 
+                users.id, users.name 
+            ORDER BY 
+                "visitCount" DESC LIMIT 10;`
+        )
+
+        res.send(ranking.rows)
+    } catch (error) {
+        
     }
 })
 
