@@ -3,16 +3,20 @@ import  pkg  from "pg"
 import dotenv from "dotenv"
 import bcrypt from "bcrypt"
 import {v4 as createToken} from "uuid"
+import cors from "cors"
 import { singInSchema } from "./schemas/signin.schema.js"
 import { userSchema } from "./schemas/user.schema.js"
 import { urlSchema } from "./schemas/url.schema.js"
 import { nanoid } from "nanoid"
+
 dotenv.config()
 const { Pool } = pkg
 /////////////////////////////////////////////////////////////////////////////////////////////
 
 const app = express()
+app.use(cors())
 app.use(express.json())
+
 
 const connectingDB = new Pool({
     connectionString: process.env.DATABASE_URL
@@ -204,6 +208,37 @@ app.delete("/urls/:id", async(req, res) => {
     }
 })
 
+app.get("/users/me", async(req, res) => {
+    const { authorization } = req.headers
+    const token = authorization?.replace("Bearer ", "")
+    if(!token){
+        return res.sendStatus(401)
+    }
 
+    try {
+        const session = await connectingDB.query('SELECT * FROM sessions WHERE token=$1;', [token])
+        if(session.rows.length === 0){
+            return res.sendStatus(401)
+        }
+
+        const rawUser = await connectingDB.query('SELECT id, name FROM users WHERE id=$1', [session.rows[0].userId])
+        if(rawUser.rows.length === 0){
+            return res.status(401).send({message: "Este usuário não existe."})
+        }
+        const rawUrls = await connectingDB.query('SELECT id, "shortUrl", url, "visitCount" FROM urls WHERE "userId"=$1', [session.rows[0].userId])
+        const shortenedUrls = rawUrls.rows || []
+        const user = {
+            ...rawUser.rows[0], 
+            visitCount: shortenedUrls.reduce((acc, cur) => acc + cur.visitCount, 0), 
+            shortenedUrls
+        }
+        
+        res.send(user)
+
+    } catch (error) {
+        console.log(error)
+        res.sendStatus(500)   
+    }
+})
 
 app.listen(4000, ()=> console.log("Servir is running in port: 4000"))
